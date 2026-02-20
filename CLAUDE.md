@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-This is a SwiftUI-based macOS application that generates images using Stable Diffusion with Core ML. The app provides a native macOS interface for text-to-image generation with support for multiple Core ML models.
+A SwiftUI macOS application for generating images using Stable Diffusion with Core ML. Supports text-to-image and image-to-image generation modes.
 
 ## Build and Run
 
@@ -15,42 +15,51 @@ open StableDiffusionApp.xcodeproj
 # Build from command line
 xcodebuild -scheme StableDiffusionApp -configuration Debug build
 
-# Run from command line
-xcodebuild -scheme StableDiffusionApp -configuration Debug run
+# Run via Swift Package Manager
+swift run StableDiffusionApp
 ```
+
+**Requirements:** macOS 13.1+, Swift 5.9, Xcode 15+
 
 ## Architecture
 
-The app follows a SwiftUI + ViewModel architecture pattern:
+Single-view architecture with embedded business logic:
 
-### Core Components
+- **ContentView.swift** - Main UI and all generation logic (~500 lines). Contains prompt inputs, parameter controls, image display, and the generation pipeline integration
+- **StableDiffusionApp.swift** - App entry point with window configuration
+- **Utilities/ImageResizer.swift** - Core Graphics image resizing with model-aware sizing (512x512 or 768x768)
+- **Utilities/SecureUnarchiver.swift** - Secure NSKeyedUnarchiver wrapper for safe data decoding
 
-- **ContentView** (`Sources/ContentView.swift`): Main UI view containing the generation interface, prompt input, and image display
-- **SDViewModel** (`Sources/SDViewModel.swift`): Central view model that orchestrates image generation, model management, and state management
-- **ModelManager** (`Sources/ModelManager.swift`): Handles Core ML model loading, caching, and management
-- **ImageGenerator** (`Sources/ImageGenerator.swift`): Wraps the StableDiffusion pipeline and handles the actual image generation process
-- **ModelDownloadView** (`Sources/ModelDownloadView.swift`): UI for downloading and managing models from Hugging Face
+## Generation Flow
 
-### Key Design Patterns
+The pipeline runs in ContentView.swift:
 
-1. **Async/Await Concurrency**: All generation operations use Swift's async/await pattern. The `ImageGenerator` runs generation in a detached task to maintain UI responsiveness.
+1. Configure `MLModelConfiguration` with `computeUnits = .cpuOnly` (avoids 30+ minute GPU shader compilation)
+2. Create `StableDiffusionPipeline` from compiled Core ML models
+3. Configure `StableDiffusionPipeline.Configuration` with prompt, steps, guidance, seed
+4. For img2img: set `strength` and `startingImage`
+5. Call `pipeline.generateImages()` with progress handler
 
-2. **Pipeline Caching**: The `ModelManager` caches loaded StableDiffusionPipeline instances to avoid reloading models between generations.
+## Model Files
 
-3. **State Management**: The `SDViewModel` uses `@Published` properties for reactive UI updates, with distinct states for ready, generating, and completed.
+Compiled Core ML models (.mlmodelc) are stored in:
+```
+Resources/StableDiffusionModels/original/compiled/
+├── TextEncoder.mlmodelc
+├── Unet.mlmodelc (or UnetChunk1 + UnetChunk2 for split models)
+├── VAEDecoder.mlmodelc
+├── VAEEncoder.mlmodelc (required for img2img)
+└── SafetyChecker.mlmodelc (optional)
+```
 
-4. **Model Configuration**: Models are configured using `MLModelConfiguration` with specific compute unit settings optimized for Stable Diffusion.
+## Dependencies
 
-## Model Management
+**ml-stable-diffusion** - Local package at `../ml-stable-diffusion/` (Apple's official Core ML Stable Diffusion implementation). Provides `StableDiffusionPipeline` and model wrappers.
 
-Models are stored in `~/Documents/StableDiffusionAppModels/` and must be in Core ML format. The app supports:
-- Loading local Core ML models
-- Downloading models from Hugging Face
-- Automatic pipeline caching for performance
+## Key Implementation Details
 
-## Important Implementation Details
-
-- **Resource Management**: The `ImageGenerator` properly disposes of the StableDiffusion pipeline after each generation to free resources
-- **Error Handling**: Network operations and model loading include comprehensive error handling with user-facing error messages
-- **Progress Tracking**: Generation progress is tracked and displayed in the UI via the view model
-- **Image Persistence**: Generated images are automatically saved to the user's Photos library
+- **CPU-only inference**: Explicitly set to avoid GPU/ANE compilation overhead. Slower generation but instant loading.
+- **No separate ViewModel**: All state and logic in ContentView using `@State` properties
+- **Model path resolution**: Searches multiple paths (bundle, current directory, hardcoded fallback)
+- **Image saving**: Uses NSSavePanel for user-selected location (not Photos library)
+- **Code signing**: Disabled for development (`CODE_SIGNING_ALLOWED = NO`)
