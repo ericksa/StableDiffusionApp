@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(grep:*)",
+      "Bash(xcodebuild -scheme StableDiffusionApp -configuration Debug build)"
+    ]
+  },
+  "outputStyle": "Explanatory"
+}

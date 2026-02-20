@@ -1,6 +1,7 @@
-import SwiftUI
-import StableDiffusion
+import CoreGraphics
 import CoreML
+import StableDiffusion
+import SwiftUI
 import UniformTypeIdentifiers
 
 @available(macOS 13.1, *)
@@ -13,25 +14,52 @@ struct ContentView: View {
     @State private var progress: Double = 0
     @State private var errorMessage: String?
     @State private var seed: UInt32 = 0
-    
+
     @State private var stepCount: Double = 40
     @State private var guidanceScale: Double = 15.0
     @State private var strength: Double = 0.5
-    @State private var imageCount: Int = 1
     @State private var isImg2Img: Bool = false
-    
+
     // Use bundled resources path
     private var modelPath: String {
         let path: String
+
+        // First, check if models exist in the app bundle (for released app)
         if let bundlePath = Bundle.main.resourcePath {
-            path = bundlePath + "/StableDiffusionModels/original/compiled"
-        } else {
-            path = "../StableDiffusionModels/original/compiled"
+            let bundleModelsPath = bundlePath + "/StableDiffusionModels/original/compiled"
+            if FileManager.default.fileExists(atPath: bundleModelsPath) {
+                print("Using bundle model path: \(bundleModelsPath)")
+                path = bundleModelsPath
+                return path
+            }
         }
-        print("Model path: \(path)")
+
+        // For Xcode development, check the project Resources directory
+        let fileManager = FileManager.default
+        let currentDirectory = fileManager.currentDirectoryPath
+
+        // Try multiple possible project locations
+        let possiblePaths = [
+            currentDirectory + "/Resources/StableDiffusionModels/original/compiled",
+            currentDirectory + "/../Resources/StableDiffusionModels/original/compiled",
+            "/Users/adamerickson/Projects/stable/StableDiffusionApp/Resources/StableDiffusionModels/original/compiled",
+            "../Resources/StableDiffusionModels/original/compiled",
+        ]
+
+        for potentialPath in possiblePaths {
+            if fileManager.fileExists(atPath: potentialPath) {
+                print("Using project model path: \(potentialPath)")
+                path = potentialPath
+                return path
+            }
+        }
+
+        // Final fallback
+        print("WARNING: Model not found at any expected path, using fallback")
+        path = "../StableDiffusionModels/original/compiled"
         return path
     }
-    
+
     var body: some View {
         VStack(spacing: 0) {
             // Header
@@ -47,9 +75,9 @@ struct ContentView: View {
             }
             .padding()
             .background(Color(nsColor: .controlBackgroundColor))
-            
+
             Divider()
-            
+
             // Main content
             HStack(spacing: 20) {
                 // Left panel - Settings
@@ -60,37 +88,49 @@ struct ContentView: View {
                             Text("Generation Mode")
                                 .font(.headline)
                                 .foregroundColor(.primary)
-                            
-                            Picker("", selection: $isImg2Img) {
-                                Text("Text to Image").tag(false)
-                                Text("Image to Image").tag(true)
-                            }
-                            .pickerStyle(.segmented)
-                            .labelsHidden()
-                            
-                            if isImg2Img {
-                                Text("Transform an existing image based on your prompt")
+
+                            VStack(alignment: .leading, spacing: 8) {
+                                Picker("", selection: $isImg2Img) {
+                                    Text("Text to Image").tag(false)
+                                    Text("Image to Image").tag(true)
+                                }
+                                .pickerStyle(.segmented)
+                                .labelsHidden()
+
+                                if isImg2Img {
+                                    Text(
+                                        "Transform an existing image based on your prompt. Select an image and adjust the strength slider."
+                                    )
                                     .font(.caption)
                                     .foregroundColor(.secondary)
+                                    .multilineTextAlignment(.leading)
+                                } else {
+                                    Text(
+                                        "Generate a new image from your text prompt. The more detailed your description, the better the result."
+                                    )
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                                    .multilineTextAlignment(.leading)
+                                }
                             }
                         }
                         .padding()
                         .background(Color(nsColor: .controlBackgroundColor))
                         .cornerRadius(8)
-                        
+
                         // Image input for img2img
                         if isImg2Img {
                             VStack(alignment: .leading, spacing: 8) {
                                 Text("Input Image")
                                     .font(.headline)
-                                
+
                                 if let image = inputImage {
                                     Image(nsImage: image)
                                         .resizable()
                                         .aspectRatio(contentMode: .fit)
                                         .frame(height: 120)
                                         .cornerRadius(8)
-                                    
+
                                     Button("Remove Image") {
                                         inputImage = nil
                                     }
@@ -109,7 +149,7 @@ struct ContentView: View {
                                     }
                                     .buttonStyle(.plain)
                                 }
-                                
+
                                 // Strength slider
                                 VStack(alignment: .leading, spacing: 4) {
                                     HStack {
@@ -127,7 +167,7 @@ struct ContentView: View {
                             .background(Color(nsColor: .controlBackgroundColor))
                             .cornerRadius(8)
                         }
-                        
+
                         // Prompt
                         VStack(alignment: .leading, spacing: 8) {
                             Text("Prompt")
@@ -135,7 +175,7 @@ struct ContentView: View {
                             TextField("What you want to see...", text: $prompt)
                                 .textFieldStyle(.roundedBorder)
                         }
-                        
+
                         // Negative Prompt
                         VStack(alignment: .leading, spacing: 8) {
                             Text("Negative Prompt")
@@ -143,12 +183,12 @@ struct ContentView: View {
                             TextField("What to avoid (optional)...", text: $negativePrompt)
                                 .textFieldStyle(.roundedBorder)
                         }
-                        
+
                         // Settings
                         VStack(alignment: .leading, spacing: 12) {
                             Text("Settings")
                                 .font(.headline)
-                            
+
                             HStack {
                                 Text("Steps:")
                                 Slider(value: $stepCount, in: 1...50, step: 1)
@@ -156,7 +196,7 @@ struct ContentView: View {
                                     .frame(width: 30)
                                     .font(.system(.body, design: .monospaced))
                             }
-                            
+
                             HStack {
                                 Text("Guidance:")
                                 Slider(value: $guidanceScale, in: 1...20, step: 0.5)
@@ -164,7 +204,7 @@ struct ContentView: View {
                                     .frame(width: 40)
                                     .font(.system(.body, design: .monospaced))
                             }
-                            
+
                             HStack {
                                 Text("Seed:")
                                 Text("\(seed)")
@@ -175,7 +215,7 @@ struct ContentView: View {
                         .padding()
                         .background(Color(nsColor: .controlBackgroundColor))
                         .cornerRadius(8)
-                        
+
                         // Generate Button
                         Button(action: generateImage) {
                             HStack {
@@ -193,8 +233,9 @@ struct ContentView: View {
                         }
                         .buttonStyle(.borderedProminent)
                         .controlSize(.large)
-                        .disabled(prompt.isEmpty || isGenerating || (isImg2Img && inputImage == nil))
-                        
+                        .disabled(
+                            prompt.isEmpty || isGenerating || (isImg2Img && inputImage == nil))
+
                         if let error = errorMessage {
                             Text(error)
                                 .foregroundColor(.red)
@@ -203,11 +244,27 @@ struct ContentView: View {
                                 .background(Color.red.opacity(0.1))
                                 .cornerRadius(8)
                         }
+
+                        // Download and share buttons
+                        if let generatedImage = generatedImage {
+                            HStack(spacing: 12) {
+                                Button(action: { saveImage(generatedImage) }) {
+                                    Label("Download", systemImage: "arrow.down.circle")
+                                }
+                                .buttonStyle(.bordered)
+
+                                Button(action: { shareImage(generatedImage) }) {
+                                    Label("Share", systemImage: "square.and.arrow.up")
+                                }
+                                .buttonStyle(.bordered)
+                            }
+                            .padding(.top, 8)
+                        }
                     }
                     .padding()
                 }
                 .frame(width: 340)
-                
+
                 // Right panel - Image
                 VStack {
                     if let image = generatedImage {
@@ -236,109 +293,209 @@ struct ContentView: View {
             regenerateSeed()
         }
     }
-    
+
+    // MARK: - Private Methods
+
     private func regenerateSeed() {
         seed = UInt32.random(in: 0...UInt32.max)
     }
-    
+
+    private func resizeImage(_ image: NSImage, targetSize: CGSize) -> NSImage? {
+        let newImage = NSImage(size: targetSize)
+        newImage.lockFocus()
+        image.draw(
+            in: NSRect(origin: .zero, size: targetSize),
+            from: NSRect(origin: .zero, size: image.size), operation: .copy, fraction: 1.0)
+        newImage.unlockFocus()
+        return newImage
+    }
+
     private func selectImage() {
+        print("Opening file selection...")
+
         let panel = NSOpenPanel()
         panel.allowsMultipleSelection = false
         panel.canChooseDirectories = false
         panel.canChooseFiles = true
         panel.allowedContentTypes = [.image, .png, .jpeg, .heic]
-        
-        if panel.runModal() == .OK, let url = panel.url {
+        panel.title = "Select an Image"
+        panel.prompt = "Choose"
+        panel.directoryURL =
+            URL(fileURLWithPath: "~/Pictures", isDirectory: true).standardizedFileURL
+
+        let result = panel.runModal()
+        print("Selection result: \(result.rawValue)")
+
+        if result == .OK, let url = panel.url {
+            print("Selected: \(url.path)")
+
             if let image = NSImage(contentsOf: url) {
-                inputImage = image
+                if image.cgImage(forProposedRect: nil, context: nil, hints: nil) != nil {
+                    print("Image loaded successfully")
+
+                    // Resize image for Stable Diffusion if needed
+                    // let preparedImage = ImageResizer.prepareImageForStableDiffusion(image, modelPath: modelPath)
+                    let preparedImage =
+                        resizeImage(image, targetSize: CGSize(width: 512, height: 512)) ?? image
+                    inputImage = preparedImage
+                } else {
+                    errorMessage = "Could not process the selected image."
+                }
+            } else {
+                errorMessage = "Failed to load image from \(url.path)"
             }
         }
     }
-    
+
     private func generateImage() {
         isGenerating = true
         errorMessage = nil
         progress = 0
-        
+
         Task {
             do {
-                print("Starting generation...")
+                print("=== Starting Generation ===")
                 print("Prompt: \(prompt)")
                 print("Negative: \(negativePrompt)")
                 print("Mode: \(isImg2Img ? "img2img" : "txt2img")")
-                print("Steps: \(Int(stepCount)), Guidance: \(guidanceScale)")
-                
-                var config = MLModelConfiguration()
-                config.computeUnits = .cpuAndGPU
-                
+                print("Steps: \(Int(stepCount)), Guidance: \(guidanceScale), Seed: \(seed)")
+
+                // IMPORTANT: Use CPU only to avoid expensive GPU/ANE shader compilation
+                // GPU compilation can take 30+ minutes and causes the disk write issues
+                // CPU inference is slower but loads instantly and uses much less memory
+                let config = MLModelConfiguration()
+                config.computeUnits = .cpuOnly
+
+                // Verify model path exists
+                let modelURL = URL(fileURLWithPath: modelPath)
+                guard FileManager.default.fileExists(atPath: modelURL.path) else {
+                    throw NSError(
+                        domain: "ModelError", code: 1001,
+                        userInfo: [NSLocalizedDescriptionKey: "Model not found at: \(modelPath)"])
+                }
+
+                print("Loading pipeline from: \(modelURL.path)")
+                print("Using CPU-only mode for faster loading")
+
                 print("Creating pipeline...")
                 let pipeline = try StableDiffusionPipeline(
-                    resourcesAt: URL(fileURLWithPath: modelPath),
+                    resourcesAt: modelURL,
                     controlNet: [],
                     configuration: config,
-                    disableSafety: false,
+                    disableSafety: true,
                     reduceMemory: true
                 )
-                
+
                 print("Loading resources...")
                 try pipeline.loadResources()
-                print("Resources loaded!")
-                
+                print("Resources loaded")
+
                 var pipelineConfig = StableDiffusionPipeline.Configuration(prompt: prompt)
                 pipelineConfig.negativePrompt = negativePrompt
                 pipelineConfig.stepCount = Int(stepCount)
                 pipelineConfig.seed = seed
                 pipelineConfig.guidanceScale = Float(guidanceScale)
-                
-                // Set img2img mode
-                if isImg2Img, let nsImage = inputImage {
+
+                if isImg2Img, let nsImage = inputImage,
+                    let cgImage = nsImage.cgImage(forProposedRect: nil, context: nil, hints: nil)
+                {
                     pipelineConfig.strength = Float(strength)
-                    
-                    if let cgImage = nsImage.cgImage(forProposedRect: nil, context: nil, hints: nil) {
-                        pipelineConfig.startingImage = cgImage
-                    }
+                    pipelineConfig.startingImage = cgImage
+                    print("Img2Img configured with strength: \(strength)")
                 }
-                
-                print("Starting generation with \(Int(stepCount)) steps...")
-                let images = try await pipeline.generateImages(
+
+                print("Generating...")
+                let images = try pipeline.generateImages(
                     configuration: pipelineConfig,
                     progressHandler: { progress in
-                        print("Step \(progress.step)/\(progress.stepCount)")
-                        self.progress = Double(progress.step) / Double(progress.stepCount)
+                        DispatchQueue.main.async {
+                            self.progress = Double(progress.step) / Double(progress.stepCount)
+                        }
                         return true
                     }
                 )
-                
-                print("Generation complete! Images: \(images.count)")
-                
-                if let cgImage = images.first ?? nil {
-                    let nsImage = NSImage(cgImage: cgImage, size: NSSize(width: cgImage.width, height: cgImage.height))
-                    await MainActor.run {
-                        self.generatedImage = nsImage
-                        self.isGenerating = false
-                    }
-                } else {
-                    await MainActor.run {
+
+                print("Generation complete. Images: \(images.count)")
+
+                await MainActor.run {
+                    if let cgImage = images.first ?? nil {
+                        self.generatedImage = NSImage(
+                            cgImage: cgImage,
+                            size: NSSize(width: cgImage.width, height: cgImage.height))
+                    } else {
                         self.errorMessage = "No image generated"
-                        self.isGenerating = false
                     }
+                    self.isGenerating = false
+                    self.progress = 1.0
                 }
+
             } catch {
                 print("ERROR: \(error)")
                 await MainActor.run {
-                    self.errorMessage = error.localizedDescription
+                    self.errorMessage = "Generation failed: \(error.localizedDescription)"
                     self.isGenerating = false
                 }
             }
         }
     }
+
+    private func saveImage(_ image: NSImage) {
+        let panel = NSSavePanel()
+        panel.nameFieldStringValue = "generated_image_\(seed).png"
+        panel.allowedContentTypes = [.png]
+        panel.canCreateDirectories = true
+
+        if panel.runModal() == .OK, let url = panel.url {
+            guard let cgImage = image.cgImage(forProposedRect: nil, context: nil, hints: nil) else {
+                errorMessage = "Could not save image"
+                return
+            }
+            let rep = NSBitmapImageRep(cgImage: cgImage)
+            guard let data = rep.representation(using: .png, properties: [:]) else {
+                errorMessage = "Could not create PNG data"
+                return
+            }
+
+            do {
+                try data.write(to: url)
+                print("Saved to: \(url.path)")
+            } catch {
+                errorMessage = "Failed to save: \(error.localizedDescription)"
+            }
+        }
+    }
+
+    private func shareImage(_ image: NSImage) {
+        guard let cgImage = image.cgImage(forProposedRect: nil, context: nil, hints: nil) else {
+            errorMessage = "Could not share image"
+            return
+        }
+        let rep = NSBitmapImageRep(cgImage: cgImage)
+        guard let data = rep.representation(using: .png, properties: [:]) else {
+            errorMessage = "Could not create PNG data"
+            return
+        }
+
+        let tempURL = FileManager.default.temporaryDirectory.appendingPathComponent(
+            "shared_image.png")
+        do {
+            try data.write(to: tempURL)
+            let sharingPicker = NSSharingServicePicker(items: [tempURL])
+            if let window = NSApp.keyWindow, let contentView = window.contentView {
+                sharingPicker.show(relativeTo: .zero, of: contentView, preferredEdge: .minY)
+            }
+        } catch {
+            errorMessage = "Failed to share: \(error.localizedDescription)"
+        }
+    }
 }
 
 #if DEBUG
-@available(macOS 13.1, *)
-struct ContentView_Previews: PreviewProvider {
-    static var previews: some View {
-        ContentView()
+    @available(macOS 13.1, *)
+    struct ContentView_Previews: PreviewProvider {
+        static var previews: some View {
+            ContentView()
+        }
     }
-}
 #endif
+
