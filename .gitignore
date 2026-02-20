@@ -1,0 +1,20 @@
+# Build
+.build/
+DerivedData/
+*.xcodeproj/
+*.xcworkspace/
+
+# macOS
+.DS_Store
+
+# Xcode
+*.pbxuser
+*.mode1v3
+*.mode2v3
+*.perspectivev3
+*.xcuserstate
+*.xccheckout
+
+# Stable Diffusion models (too large - download separately)
+# Place CoreML models in Resources/StableDiffusionModels/original/compiled/
+Resources/StableDiffusionModels/
