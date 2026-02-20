@@ -300,16 +300,6 @@ struct ContentView: View {
         seed = UInt32.random(in: 0...UInt32.max)
     }
 
-    private func resizeImage(_ image: NSImage, targetSize: CGSize) -> NSImage? {
-        let newImage = NSImage(size: targetSize)
-        newImage.lockFocus()
-        image.draw(
-            in: NSRect(origin: .zero, size: targetSize),
-            from: NSRect(origin: .zero, size: image.size), operation: .copy, fraction: 1.0)
-        newImage.unlockFocus()
-        return newImage
-    }
-
     private func selectImage() {
         print("Opening file selection...")
 
@@ -330,21 +320,63 @@ struct ContentView: View {
             print("Selected: \(url.path)")
 
             if let image = NSImage(contentsOf: url) {
-                if image.cgImage(forProposedRect: nil, context: nil, hints: nil) != nil {
-                    print("Image loaded successfully")
+                print("Original image size: \(image.size)")
 
-                    // Resize image for Stable Diffusion if needed
-                    // let preparedImage = ImageResizer.prepareImageForStableDiffusion(image, modelPath: modelPath)
-                    let preparedImage =
-                        resizeImage(image, targetSize: CGSize(width: 512, height: 512)) ?? image
-                    inputImage = preparedImage
-                } else {
-                    errorMessage = "Could not process the selected image."
+                // Create a properly sized 512x512 CGImage
+                let targetSize = CGSize(width: 512, height: 512)
+                guard let resizedCGImage = createResizedCGImage(from: image, targetSize: targetSize) else {
+                    errorMessage = "Could not resize the image to 512x512"
+                    return
                 }
+
+                print("Resized CGImage: \(resizedCGImage.width)x\(resizedCGImage.height)")
+                let resizedNSImage = NSImage(cgImage: resizedCGImage, size: NSSize(width: 512, height: 512))
+                inputImage = resizedNSImage
             } else {
                 errorMessage = "Failed to load image from \(url.path)"
             }
         }
+    }
+
+    /// Creates a properly resized CGImage at exactly the target dimensions
+    private func createResizedCGImage(from nsImage: NSImage, targetSize: CGSize) -> CGImage? {
+        guard let cgImage = nsImage.cgImage(forProposedRect: nil, context: nil, hints: nil) else {
+            print("Failed to get CGImage from NSImage")
+            return nil
+        }
+
+        let width = Int(targetSize.width)
+        let height = Int(targetSize.height)
+
+        // Create a CGContext with the exact target dimensions
+        guard let colorSpace = CGColorSpace(name: CGColorSpace.sRGB) else {
+            print("Failed to create color space")
+            return nil
+        }
+
+        guard let context = CGContext(
+            data: nil,
+            width: width,
+            height: height,
+            bitsPerComponent: 8,
+            bytesPerRow: width * 4,
+            space: colorSpace,
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        ) else {
+            print("Failed to create CGContext")
+            return nil
+        }
+
+        // Draw the image scaled to exactly fit the context
+        context.interpolationQuality = .high
+        context.draw(cgImage, in: CGRect(x: 0, y: 0, width: width, height: height))
+
+        guard let resizedImage = context.makeImage() else {
+            print("Failed to create resized CGImage")
+            return nil
+        }
+
+        return resizedImage
     }
 
     private func generateImage() {
@@ -396,12 +428,35 @@ struct ContentView: View {
                 pipelineConfig.seed = seed
                 pipelineConfig.guidanceScale = Float(guidanceScale)
 
-                if isImg2Img, let nsImage = inputImage,
-                    let cgImage = nsImage.cgImage(forProposedRect: nil, context: nil, hints: nil)
-                {
+                if isImg2Img, let nsImage = inputImage {
+                    // Get the actual NSImage size
+                    print("NSImage size: \(nsImage.size)")
+
+                    guard let cgImage = nsImage.cgImage(forProposedRect: nil, context: nil, hints: nil) else {
+                        await MainActor.run {
+                            self.errorMessage = "Failed to convert NSImage to CGImage"
+                            self.isGenerating = false
+                        }
+                        return
+                    }
+
                     pipelineConfig.strength = Float(strength)
                     pipelineConfig.startingImage = cgImage
-                    print("Img2Img configured with strength: \(strength)")
+                    print("=== Img2Img Debug ===")
+                    print("Input CGImage dimensions: \(cgImage.width)x\(cgImage.height)")
+                    print("CGImage bitsPerPixel: \(cgImage.bitsPerPixel), bitsPerComponent: \(cgImage.bitsPerComponent)")
+                    print("CGImage colorSpace: \(String(describing: cgImage.colorSpace?.name))")
+                    print("Expected encoder shape: [1, 3, 512, 512]")
+
+                    // Verify dimensions match expected 512x512
+                    if cgImage.width != 512 || cgImage.height != 512 {
+                        print("ERROR: CGImage dimensions don't match expected 512x512!")
+                        await MainActor.run {
+                            self.errorMessage = "Image dimensions must be 512x512, got \(cgImage.width)x\(cgImage.height)"
+                            self.isGenerating = false
+                        }
+                        return
+                    }
                 }
 
                 print("Generating...")
