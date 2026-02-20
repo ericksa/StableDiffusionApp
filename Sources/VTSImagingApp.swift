@@ -2,7 +2,7 @@ import SwiftUI
 import StableDiffusion
 
 @main
-struct SDApp: App {
+struct VTSImagingApp: App {
     var body: some Scene {
         WindowGroup {
             if #available(macOS 13.1, *) {

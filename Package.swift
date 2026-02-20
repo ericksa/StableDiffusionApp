@@ -2,13 +2,13 @@
 import PackageDescription
 
 let package = Package(
-    name: "StableDiffusionApp",
+    name: "VTSImaging",
     platforms: [
         .macOS(.v13),
     ],
     products: [
         .executable(
-            name: "StableDiffusionApp",
+            name: "VTSImaging",
             targets: ["App"]
         ),
     ],

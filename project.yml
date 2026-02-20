@@ -1,6 +1,6 @@
-name: StableDiffusionApp
+name: VTSImaging
 options:
-  bundleIdPrefix: com.ericksa
+  bundleIdPrefix: com.vts
   deploymentTarget:
     macOS: "13.1"
   xcodeVersion: "15.0"
@@ -19,7 +19,7 @@ packages:
     path: ../ml-stable-diffusion
 
 targets:
-  StableDiffusionApp:
+  VTSImaging:
     type: application
     platform: macOS
     sources:
@@ -32,10 +32,10 @@ targets:
         product: StableDiffusion
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.ericksa.StableDiffusionApp
+        PRODUCT_BUNDLE_IDENTIFIER: com.vts.imaging
         INFOPLIST_FILE: Sources/Info.plist
-        PRODUCT_NAME: StableDiffusionApp
+        PRODUCT_NAME: VTS Imaging
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         COMBINE_HIDPI_IMAGES: YES
         ENABLE_HARDENED_RUNTIME: NO
-        CODE_SIGN_ENTITLEMENTS: Sources/StableDiffusionApp.entitlements
+        CODE_SIGN_ENTITLEMENTS: Sources/VTSImaging.entitlements
