@@ -16,7 +16,7 @@ class SecureUnarchiver {
             let allowedClassesForDecoding: [AnyClass] = allowedClasses
 
             // Decode the object with the allowed classes
-            guard let object = try unarchiver.decodeTopLevelObject(of: allowedClassesForDecoding)
+            guard let object = try unarchiver.decodeTopLevelObject(of: allowedClassesForDecoding, forKey: NSKeyedArchiveRootObjectKey)
             else {
                 print("Failed to decode object: no object found")
                 return nil
